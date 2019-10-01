@@ -1,0 +1,347 @@
+    
+    % This model start from 48hrs (2DAI). 
+    % In pre-growth phase from 48hrs to 72hrs, trap grows isotropically. 
+    % This phase is added to modify cell shape in actual growth start. (cell setting)
+    % In pre-growth phase from 72hrs to 96hrs, trap does not grow.
+    % This phase is added for morphogen setting (diffusing).(morphogen setting)
+    % Growth phase is from 96hrs (4DAI) to 252hrs(10.5DAI).
+    % Currently each time step is 6hrs.
+    % Run from 48hrs to 252hrs = 34 steps.
+    % To 10.5DAI, run 34 steps.
+
+    
+    if (Steps(m)==0) && m.globalDynamicProps.doinit
+        % Pre-growth phase (Cell setting)
+        kapar_p(:) = 0.030;
+        kaper_p(:) = kapar_p;
+        kbpar_p(:) = kapar_p;
+        kbper_p(:) = kapar_p;
+        knor_p(:)  = 0.1;
+        
+        id_com_p(:) = 1; 
+        CELL_AREA_AT_DIVISION = 70;
+        s_celldivthresh_p(:) = CELL_AREA_AT_DIVISION;
+        
+    elseif realtime == 72
+         % Pre-growth phase (Morphogen setting)      
+         kapar_p(:) = 0.00;
+         kaper_p(:) = kapar_p;
+         kbpar_p(:) = kapar_p;
+         kbper_p(:) = kapar_p;
+         knor_p(:) = 0;
+         
+       
+        %ID_CENTRESTRIPMOUTH
+        % This is a region for mouth centre
+        id_centrestripmouth_p(:) = 0;
+        radius = 36.34;% Radius of sphare
+        theta_centrestripmouth = 328.5; % (323.5 + 333.5) / 2
+        rtheta_centrestripmouth = theta_centrestripmouth / 180*pi; % radian degree
+        id_centrestripmouth_p((m.nodes (:, 1) > 0) &...
+           (m.nodes (:, 2) <= sin(rtheta_centrestripmouth + 0.06)*radius) &...
+           (m.nodes (:, 2) >= sin(rtheta_centrestripmouth  )*radius) &...
+           (m.nodes (:, 3) < 18) & (m.nodes(:, 3) > -18)) = 1;
+       
+       
+        %ID_MIDLINE
+        id_midline_p (:) = 0;
+        id_midline_p ((m.nodes (:,3) > -2) & (m.nodes(:,3) < 2))= 1;
+        
+        %ID_CENTSTALK
+        %Centstalk is at the bottom of sphere
+        %cut by plane parallel to x-z plane
+        %the position of center of stalk is 270 degree (from view +Z axis)
+        %= bottom of sphere = theta1
+        %1/2 corn angle = theta2
+        %centstalk definition: cut circle by a linear line (y = ax + b)
+        % a = 1/tan(centre degree) 
+        % this line goes through a point [x, y] = 
+        %[(cos(theta1)*cos(theta2)),(cos(theta1)*sin(theta2))]
+        
+        theta_centstalk = 270;%input center angle 
+        rtheta_centstalk = theta_centstalk/180*pi;%radian degree
+        theta2_centstalk = 1;%input 1/2 corn angle (just smaller degree than stalk region)
+        rtheta2_centstalk = theta2_centstalk/180*pi;%radian degree
+        radius = 36.34;%input radius of sphare
+        C_centstalk = m.nodes(:,2)- (cos(rtheta2_centstalk)*sin(rtheta_centstalk)*radius) ...
+            + (1/tan(rtheta_centstalk))*(m.nodes(:,1)-cos(rtheta2_centstalk)*cos(rtheta_centstalk)*radius) ;
+        id_centstalk_p(C_centstalk <= 0) = 1;
+        
+        
+        %STK (ID_STALK)
+        %Stalk is at the bottom of the sphere
+        %Angles are based on Karen's measurements
+        %stalk centre angle = 270 degree (from view +Z axis)
+        %stalk angle = 55 (1/2 corn angle = 27.5)
+        %stalk definition: cut circle by a linear line (y = ax + b)
+        %same as centstalk
+        
+        id_stalk_p(:) = 0;
+        theta_stalk = 270;%input center angle (from view +Z axis)
+        rtheta_stalk = theta_stalk/180*pi;%radian degree
+        theta2_stalk = 27.5;%input 1/2 stalk width angle, equal to 1/2 corn angle
+        rtheta2_stalk = theta2_stalk/180*pi;%radian degree
+        radius = 36.34;%input radius of sphare
+        C_stalk = m.nodes(:,2)- (sin((rtheta_stalk)+(rtheta2_stalk))*radius) ...
+            + (1/tan(rtheta_stalk))*(m.nodes(:,1)-cos((rtheta_stalk)+(rtheta2_stalk))*radius) ;
+        id_stalk_p(C_stalk <= 0) = 1;
+                            
+        
+       %VENTRAL REGION
+        id_ventral_p(:) = 0;
+        ventral_bottom = 270;
+        ventral_top = 328.5;
+        rventral_bottom = ventral_bottom/180*pi;
+        rventral_top = ventral_top/180*pi;
+        id_ventral_p((m.nodes (:,1) > 0)&(m.nodes (:,2) < tan(rventral_top).* m.nodes(:,1)))=1;
+
+        
+       %DORSAL REGION
+        %NOT ventral
+        id_dorsal_p(~(id_ventral_p(:)))= 1;
+        
+      
+       %BACKGROUND
+        v_background_p (:) = 1;
+             
+    
+    %% set up s_midline diffusable factor from id_midline -- s_midline diffuses from id_midline and creates a gradient
+        s_midline_p = id_midline_p;
+        m.morphogenclamp((id_midline_p==1), s_midline_i ) = 1; % midline is producing
+   
+        m = leaf_mgen_conductivity( m, 'S_MIDLINE', 1);  % specifies the diffusion rate of s_midline across the tissue from id_midline. 
+        m = leaf_mgen_absorption( m, 'S_MIDLINE', 0.0001 );  % specifies degradation rate of s_midline across the whole tissue
+   
+   %% Making cell clones (for 40% of all cells for Figure 11A-L)
+       %Add random values to all cells in GUI. Then call to make 40% cells display.
+       %Comment out before run.
+       %c_rand(:) = (max(0.6, c_rand(:))-0.6).*2.5;        
+   
+   %% @@PRN Polariser Regulatory Network
+    
+    switch modelname
+        case {
+             '1_Isotropic model 1'
+             '2_Isotropic model 2'
+             '3_Isotropic model 3'
+             '4_anisotropic model 1'
+             '5_anisotropic model 2'
+             '6_anisotropic model 3'
+             '7_integrated model'
+             '8_terminal model'
+             '9_basal model'
+             '10_increasing ventral thickness'
+            }
+              
+            P(:) = 0.1;
+            P(id_centstalk_p == 1) = 1; % + organiser
+            P(id_centrestripmouth_p == 1) = 0; % - organiser
+            
+            m.morphogenclamp(((id_centrestripmouth_p==1)|(id_centstalk_p==1)), polariser_i ) = 1;
+            
+            m = leaf_mgen_conductivity( m, 'POLARISER', 10 ); % specifies the diffusion rate of polariser across the tissue from the + organiser. 
+            m = leaf_mgen_absorption( m, 'POLARISER', 0.0001 );% specifies degradation rate of polariser across the whole tissue
+   
+       otherwise
+    end
+    
+    
+    
+   elseif (realtime > 72)&(realtime < 96)
+   %% set up MID (midline diffuse except for the stalk)
+     id_midline_p = s_midline_p.*(id_stalk_p == 0);
+     
+    
+   %% set up VEN (id_ventralmidline from s_midline)         
+     id_ventralmidline_p = s_midline_p.*((id_ventral_p == 1)&(id_stalk_p == 0));
+    
+   %% visualising factors for making Figure 
+     v_dorsalmidline_p = id_midline_p.*id_dorsal_p;
+     v_ventralmidline_p (id_ventralmidline_p > 0.01) = 1;
+
+    elseif abs (realtime - 96) < 0.01 
+        %Growth starts
+        %fixing patern of polariser at this timepoint 
+        m = leaf_mgen_conductivity( m, 'POLARISER', 0 );
+        m = leaf_mgen_absorption( m, 'POLARISER', 0 );
+        
+        m = leaf_mgen_conductivity( m, 'S_MIDLINE', 0 );
+        m = leaf_mgen_absorption( m, 'S_MIDLINE', 0 );
+
+   %% Setting cell division threshold
+        id_com_p = 1; 
+        CELL_AREA_AT_DIVISION = 70;
+        s_celldivthresh_p(:) = CELL_AREA_AT_DIVISION;
+
+   %% Growth Regulatory Network
+        
+     switch modelname
+        case '1_Isotropic model 1'%Figure 4A-F
+            %Isotoropic growth from phere to flattend disc
+            kapar_p(:) = 0.0145...
+                         .*pro (0.165, s_midline_p);
+            kaper_p(:) = kapar_p;             
+            kbpar_p(:) = kapar_p;
+            kbper_p(:) = kaper_p;
+            knor_p(:)  = 0.005;
+            
+            %For Figure 4C
+            v_karea_p(:) = kapar_p + kaper_p;
+
+       case '2_Isotropic model 2'%Figure 4G-J
+           %Isotoropic with midline and stalk           
+            kapar_p(:) = 0.0145...
+                         .*pro (0.165, s_midline_p)...
+                         .*inh (1.4, id_stalk_p);   
+            kaper_p(:) = kapar_p;                                 
+            kbpar_p(:) = kapar_p;
+            kbper_p(:) = kaper_p;
+            knor_p(:)  = 0.005;
+            
+            %For Figure 4H
+            v_karea_p(:) = kapar_p + kaper_p; 
+            
+        case '3_Isotropic model 3'%Figure 4K-N, 9E, 10E, 11A-E, S5AB and S7AB
+        
+            kapar_p(:) = 0.0145...
+                         .*pro (0.165, s_midline_p)...
+                         .*inh (1.4, id_stalk_p)...
+                         .*pro (0.2, id_ventralmidline_p);             
+            kaper_p(:) = kapar_p;        
+            kbpar_p(:) = kapar_p; 
+            kbper_p(:) = kaper_p;
+            knor_p(:)  = 0.005;
+            
+            %For Figure 4L
+            v_karea_p(:) = kapar_p + kaper_p;
+                 
+        case '4_anisotropic model 1'%Figure 6A-D
+            kapar_p(:) = 0.015...
+                         .*pro (0.35, s_midline_p);
+            kapar_p(:) = min(0.03, kapar_p);
+            kaper_p(:) = 0.03 - kapar_p;            
+            kbpar_p(:) = kapar_p;
+            kbper_p(:) = kaper_p;            
+            knor_p(:)  = 0.005;
+            
+            %For Figure 6B
+            v_specificaniso2_p(:) = (kapar_p - kaper_p)./(kapar_p + kaper_p);
+            
+
+        case '5_anisotropic model 2'%Figure 6E-H
+            kapar_p(:) = 0.015...
+                         .*pro (0.35, s_midline_p)...
+                         .*inh(1.5, id_stalk_p);
+            kapar_p(:) = min(0.03, kapar_p);
+            kaper_p(:) = 0.03 - kapar_p;            
+            kbpar_p(:) = kapar_p; 
+            kbper_p(:) = kaper_p; 
+            knor_p(:)  = 0.005;
+            
+            %For Figure 6F
+            v_specificaniso2_p(:) = (kapar_p - kaper_p)./(kapar_p + kaper_p);
+            
+        case '6_anisotropic model 3'%Figure 6I-L, 9F, 10F, 11E-H, S5CD and S7CD
+            kapar_p(:) = 0.015...
+                         .*pro (0.35, s_midline_p)...
+                         .*pro (0.5, id_ventralmidline_p)...
+                         .*inh(1.5, id_stalk_p);
+            kapar_p(:) = min(0.03, kapar_p);
+            kaper_p(:) = 0.03 - kapar_p;            
+            kbpar_p(:) = kapar_p; 
+            kbper_p(:) = kaper_p; 
+            
+            knor_p(:)  = 0.005;
+            
+            %For Figure 6J
+            v_specificaniso2_p(:) = (kapar_p - kaper_p)./(kapar_p + kaper_p);
+        
+
+        case '7_integrated model'%Figure 6M-P, 7F, 9AG, 10AG, 11I-L and 12GJM 
+          
+           kapar_p(:) = 0.015...
+                         .*pro (0.35, s_midline_p )...
+                         .*pro (0.5, id_ventralmidline_p > 0.01)...
+                         .*inh(1.5, id_stalk_p);
+           kaper_p(:) = 0.015...
+                         .*inh (0.8, id_ventralmidline_p > 0.01)...
+                         .*inh(1.5, id_stalk_p);
+           kbpar_p(:) = kapar_p;
+           kbper_p(:) = kaper_p;
+           knor_p(:)  = 0.005;
+          
+           %For Figure 6M
+           v_karea_p(:) = kapar_p + kaper_p;
+           
+           %For Figure 6N
+           v_specificaniso2_p(:) = (kapar_p - kaper_p)./(kapar_p + kaper_p);
+           
+         case '8_terminal model'%Figure 7
+          
+           kapar_p(:) = 0.015...
+                         .*pro (0.05, s_midline_p )...
+                         .*pro (1.25, id_ventralmidline_p > 0.01)...
+                         .*inh(1.5, id_stalk_p);
+           kaper_p(:) = 0.015...
+                         .*inh (0.8, id_ventralmidline_p > 0.01)...
+                         .*inh(1.5, id_stalk_p);
+           kbpar_p(:) = kapar_p;
+           kbper_p(:) = kaper_p;
+           knor_p(:)  = 0.005;
+
+        case '9_basal model'%Figure 7
+          
+           kapar_p(:) = 0.015...
+                         .*pro (0.45, s_midline_p )...
+                         .*pro (0.1, id_ventralmidline_p > 0.01)...
+                         .*inh(1.5, id_stalk_p);
+           kaper_p(:) = 0.015...
+                         .*inh (0.8, id_ventralmidline_p > 0.01)...
+                         .*inh(1.5, id_stalk_p);
+           kbpar_p(:) = kapar_p;
+           kbper_p(:) = kaper_p;
+           knor_p(:)  = 0.005;
+          
+
+        case '10_increasing ventral thickness'%Supplemental Figure S3
+          
+           kapar_p(:) = 0.015...
+                         .*pro (0.35, s_midline_p )...
+                         .*pro (0.5, id_ventralmidline_p > 0.01)...
+                         .*inh(1.5, id_stalk_p);
+           kaper_p(:) = 0.015...
+                         .*inh (0.8, id_ventralmidline_p > 0.01)...
+                         .*inh(1.5, id_stalk_p);
+           kbpar_p(:) = kapar_p;
+           kbper_p(:) = kaper_p;
+           knor_p(:)  = 0.005.*pro(0.5, id_stalk_p).*pro(0.5, id_ventralmidline_p > 0.01);
+       
+           
+    end
+    end   
+     
+    %% Cell division stop
+     if (realtime >= 96)
+     arrest_p(id_stalk_p(:) > 0) = 1; 
+     end
+
+     if (realtime >= 156)
+     arrest_p(:) = 1; 
+     end
+          
+    %% Making a clipping plane for Figure 4AJN, 6HLP, 7DEF, 12GJM and S3
+     if (realtime >= 252) 
+      % For the developed view (Figure 4JN, 6HLP, 7DEF, 12GJM and S3), realtime >= 252.
+      % For the initial view (Figure 4A), realtime >= 96
+            
+            id_rightleft_p(m.nodes (:,3) <= 0) = 1;
+            id_topbottom_p(m.nodes (:,2) <= 0) = 1;
+            id_frontback_p(m.nodes (:,1) <= 0) = 1;
+            id_bottomtop_p(m.nodes (:,2) >= 0) = 1;
+            
+     end
+     
+   
+  %% Displaying Mouth
+          c_mouth(:) = FEvertexToCell(m, id_centrestripmouth_p);
+          c_mouth(:) = ceil(c_mouth(:));

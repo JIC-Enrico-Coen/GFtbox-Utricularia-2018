@@ -1,0 +1,98 @@
+
+      % This is a code setting property of the trap.
+      % For non-cell models (Figure 4, 6, 7, 12, S3, S5 and S7),
+      % 'bioAsplitcells' and 'allowSplitBio' should be false.
+      % For celluar models (Figure 9, 10 and 11), 
+      % 'bioAsplitcells' and 'allowSplitBio' should be true.
+      %  Cells should be added by GUI. (No. of cells = 63)
+
+      m = leaf_setproperty( m, 'mingradient', 0, 'timestep', 6, 'userpolarisation',false, ...
+         'bioAsplitcells', true, 'allowSplitBio',true, ...
+         'bioApullin', 0.09 );   
+      m = leaf_subdivide( m, 'morphogen', 'id_stalk', 'min', 0.5, 'minrellength', 8);
+    
+    if (Steps(m)==0) && m.globalDynamicProps.doinit
+      
+      % This is a code creating latitude and longitude grids on the sphare as in Figure 4 and 6. 
+      % However, it is not necessary to call this on every run, as the
+      % initial mesh has been saved with the cells created.
+      % m = leaf_makesecondlayer( m, 'mode', 'latlong','divisions', [36 18], 'subdivisions', [1 1],'plane', 'XZ' );   
+      % m = leaf_plotoptions( m, 'bioAemptyalpha', 1);  
+        
+        m.userdata.ranges.modelname.range = {
+            '1_Isotropic model 1'%Figure 4A-F
+            '2_Isotropic model 2'%Figure 4G-J
+            '3_Isotropic model 3'%Figure 4K-N, 9E, 10E, 11A-E, S5AB and S7AB
+            '4_anisotropic model 1'%Figure 6A-D
+            '5_anisotropic model 2'%Figure 6E-H
+            '6_anisotropic model 3'%Figure 6I-L, 9F, 10F, 11E-H, S5CD and S7CD
+            '7_integrated model'%Figure 6M-P, 7F, 9AG, 10AG, 11I-L, and 12GJM
+            '8_terminal model'%Figure 7D
+            '9_basal model'%Figure 7E
+            '10_increasing ventral thickness'%Supplemental Figure S3
+            }; 
+        m.userdata.ranges.modelname.index = 7;
+               
+    end
+    m.secondlayer.averagetargetarea = 0;  
+    modelname = m.userdata.ranges.modelname.range{m.userdata.ranges.modelname.index};  
+    
+    % This code is for setting arrows and cell colours
+    m = leaf_plotoptions(m,'highgradcolor',[0,0,0],'lowgradcolor',[1,0,0]);
+    m = leaf_plotoptions(m,'decorscale',1.5);
+    m = leaf_plotoptions(m,'arrowthickness',1.8);
+    m = leaf_plotoptions(m,'layeroffset', 0.005);
+    % For the initial view (Figure 4BCGHKL and 6BFJMN), layeroffset = 0.005. 
+    % For the developed view (Figure 4EIM), layeroffset = 0.05. 
+    m = leaf_plotoptions(m,'arrowheadratio', 0.5);
+    m = leaf_plotoptions(m,'arrowheadsize', 0.5);
+    % Arrow spercity was set in GUI. 
+    % For the initial view (Figure 6AEI), spercity = 0.15.
+    % For the developed view (Figure 6CGKO, 12GJM, S3), spercity = 0.1. 
+    m = leaf_plotoptions(m,'bioAlinecolor', [0.5 0.5 0.5]);
+    % For non-cell models (Figure 4BCEGHIKLM and 6BFJMN), bioAlinecolor = [0.3 0.3 0.3].
+    % For cellular models (Figure 9AEFG, 10AEFG, 11A-L, S5A-D and S7A-D) bioAlinecolor = [0.8 0.8 0.8]
+    
+    
+    % This code is for cellular anisotropic line used in Figure 10AEFG and
+    % S7A-D. For these models, 'drawcellaniso' is true.
+    m = leaf_plotoptions( m, 'drawcellaniso', false, 'cellanisowidth', 3.0, 'cellanisothreshold', 0.45, 'cellanisocolor', 'k');
+    
+    % This code is for cell color scaling used in Figuer 9AEFG, 10AEFG,
+    % S5A-E and S7A-E.
+    m = leaf_setcellcolorinfo( m,...
+        'factor', 'c_aniso', ...
+        'mode', 'custom', ...
+        'colors', jet(), ...
+        'autorange', false, ...
+        'range', [0 1]);
+    m = leaf_setcellcolorinfo( m,...
+        'factor', 'c_area', ...
+        'mode', 'custom', ...
+        'colors', jet(), ...
+        'autorange', false, ...
+        'range', [3.219 7.824]);
+    
+    % This code is for making mouth region white as in Figure 9AEFG,
+    % 10AEFG, and 11A-L, S5A-D and S7A-D.
+    mymap = [0 1 1];
+    m = leaf_setcellcolorinfo( m,...
+        'factor', 'c_mouth', ...
+        'mode', 'custom', ...
+        'colors', colormap(mymap), ...
+        'autorange', false, ...
+        'range', [0.01 0.015]);
+    
+    % This code is for making clones as in Fig 11A-L
+    m = leaf_setcellcolorinfo( m,...
+         'factor', 'c_rand', ... 
+         'autorange', false, ...
+         'range', [0.8 1.0]);
+    
+    % This code is for cell multiplot. Choose one and comment out others
+  % m = leaf_plotoptions( m, 'cellbodyvalue', { 'C_aniso', 'C_mouth'} );
+  % m = leaf_plotpriority( m, { 'C_aniso', 'C_mouth' }, [0 1], 0, 'type', 'cellvalue');
+   m = leaf_plotoptions( m, 'cellbodyvalue', { 'C_area', 'C_mouth'} );
+   m = leaf_plotpriority( m, { 'C_area', 'C_mouth' }, [0 1], 0, 'type', 'cellvalue');
+  % m = leaf_plotoptions( m, 'cellbodyvalue', { 'C_rand', 'C_mouth'} );
+  % m = leaf_plotpriority( m, { 'C_rand', 'C_mouth' }, [0 1], 0, 'type', 'cellvalue');
